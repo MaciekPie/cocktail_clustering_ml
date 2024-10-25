@@ -6,7 +6,7 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
 # Load the cocktail dataset from the provided file path
-file_path = "Uczenie/Solvro/Machine_Learning/cocktail_dataset.json"
+file_path = "data/cocktail_dataset.json"
 cocktail_data = pd.read_json(file_path)
 
 # Ensure missing values are handled in the 'tags' column
