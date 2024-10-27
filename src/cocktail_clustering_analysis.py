@@ -4,6 +4,8 @@ from sklearn.cluster import KMeans, DBSCAN
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
+import os
+import warnings
 
 # Load the cocktail dataset from the provided file path
 file_path = "data/cocktail_dataset.json"
@@ -52,8 +54,13 @@ normalized_data = scaler.fit_transform(numeric_data)
 # Convert back to DataFrame for easy handling
 normalized_df = pd.DataFrame(normalized_data, columns=numeric_data.columns)
 
+os.environ["OMP_NUM_THREADS"] = "1"
+warnings.filterwarnings(
+    "ignore", message="KMeans is known to have a memory leak on Windows"
+)
+
 # Apply K-Means clustering with 5 clusters
-kmeans = KMeans(n_clusters=5, random_state=42)
+kmeans = KMeans(n_clusters=5, random_state=42, n_init=10)
 kmeans.fit(normalized_df)
 
 # Add the cluster labels to the dataframe
