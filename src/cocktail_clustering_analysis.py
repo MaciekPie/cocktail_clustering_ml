@@ -1,99 +1,75 @@
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.cluster import KMeans, DBSCAN
+from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-import os
-import warnings
 
-# Load the cocktail dataset from the provided file path
-file_path = "data/cocktail_dataset.json"
-cocktail_data = pd.read_json(file_path)
 
-# Ensure missing values are handled in the 'tags' column
-cocktail_data["tags"] = cocktail_data["tags"].apply(
-    lambda x: x if isinstance(x, list) else []
-)
+def load_data(file_path):
+    """Load the dataset from the provided file path."""
+    cocktail_data = pd.read_json(file_path)
+    cocktail_data["tags"] = cocktail_data["tags"].apply(
+        lambda x: x if isinstance(x, list) else []
+    )
+    cocktail_data["num_ingredients"] = cocktail_data["ingredients"].apply(len)
+    return cocktail_data
 
-# Add num_ingredients column before encoding
-cocktail_data["num_ingredients"] = cocktail_data["ingredients"].apply(len)
 
-# One-hot encode the category, glass, and tags columns
-category_encoded = pd.get_dummies(cocktail_data["category"], prefix="category")
-glass_encoded = pd.get_dummies(cocktail_data["glass"], prefix="glass")
-tags_encoded = cocktail_data.explode("tags")
-tags_encoded = pd.get_dummies(tags_encoded["tags"], prefix="tag").groupby(level=0).sum()
+def perform_eda(data):
+    """Perform exploratory data analysis and print key insights."""
+    print("Dataset Info:")
+    data.info()
+    print("\nMissing Values:\n", data.isnull().sum())
+    print("\nTag Counts:\n", data.explode("tags")["tags"].value_counts())
+    print("\nCategory Counts:\n", data["category"].value_counts())
+    print("\nIngredients Count Summary:\n", data["num_ingredients"].describe())
 
-# Concatenate all the one-hot encoded columns with the original dataframe
-cocktail_data_encoded = pd.concat(
-    [cocktail_data, category_encoded, glass_encoded, tags_encoded], axis=1
-)
 
-# Drop non-numeric columns but KEEP 'num_ingredients'
-numeric_data = cocktail_data_encoded.drop(
-    [
-        "id",  # Dropping id since it's not useful for clustering
-        "name",
-        "category",
-        "glass",
-        "tags",
-        "createdAt",
-        "updatedAt",
-        "instructions",
-        "imageUrl",
-        "ingredients",
-    ],
-    axis=1,
-)
+def preprocess_data(data):
+    """Preprocess the dataset: one-hot encoding and normalization."""
+    # One-hot encode categorical features
+    category_encoded = pd.get_dummies(data["category"], prefix="category")
+    glass_encoded = pd.get_dummies(data["glass"], prefix="glass")
+    tags_encoded = data.explode("tags")
+    tags_encoded = (
+        pd.get_dummies(tags_encoded["tags"], prefix="tag").groupby(level=0).sum()
+    )
 
-# Normalize the numerical columns
-scaler = MinMaxScaler()
-normalized_data = scaler.fit_transform(numeric_data)
+    # Concatenate encoded columns and drop unnecessary ones
+    data_encoded = pd.concat(
+        [data, category_encoded, glass_encoded, tags_encoded], axis=1
+    )
+    numeric_data = data_encoded.drop(
+        [
+            "id",
+            "name",
+            "category",
+            "glass",
+            "tags",
+            "createdAt",
+            "updatedAt",
+            "instructions",
+            "imageUrl",
+            "ingredients",
+        ],
+        axis=1,
+    )
 
-# Convert back to DataFrame for easy handling
-normalized_df = pd.DataFrame(normalized_data, columns=numeric_data.columns)
+    # Normalize numeric data
+    scaler = MinMaxScaler()
+    normalized_data = scaler.fit_transform(numeric_data)
+    return pd.DataFrame(normalized_data, columns=numeric_data.columns), data_encoded
 
-os.environ["OMP_NUM_THREADS"] = "1"
-warnings.filterwarnings(
-    "ignore", message="KMeans is known to have a memory leak on Windows"
-)
 
-# Apply K-Means clustering with 5 clusters
-kmeans = KMeans(n_clusters=5, random_state=42, n_init=10)
-kmeans.fit(normalized_df)
+def apply_kmeans(data, n_clusters=5):
+    """Apply K-Means clustering to the dataset and return labels and Silhouette Score."""
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(data)
+    sil_score = silhouette_score(data, labels)
+    return labels, sil_score
 
-# Add the cluster labels to the dataframe
-cocktail_data_encoded["cluster"] = kmeans.labels_
 
-# Evaluate the clustering with Silhouette Score
-sil_score_kmeans = silhouette_score(normalized_df, kmeans.labels_)
-print(f"Silhouette Score (K-Means): {sil_score_kmeans}")
-
-# PCA Visualization (K-Means)
-pca = PCA(n_components=2)
-pca_result = pca.fit_transform(normalized_df)
-
-# Plot the K-Means clusters
-plt.figure(figsize=(10, 7))
-plt.scatter(pca_result[:, 0], pca_result[:, 1], c=kmeans.labels_, cmap="viridis")
-plt.title("Cocktail Clusters (PCA) - K-Means")
-plt.xlabel("PCA 1")
-plt.ylabel("PCA 2")
-plt.colorbar(label="Cluster")
-plt.show()
-
-# Analyze clusters based on key numeric features
-# Prepare DataFrame with numeric columns only
-numeric_columns_for_analysis = ["cluster", "num_ingredients", "category_Cocktail"]
-
-# Optionally, include specific tag columns or all tag columns
-tag_columns = [col for col in cocktail_data_encoded.columns if col.startswith("tag_")]
-numeric_columns_for_analysis.extend(tag_columns)
-
-# Group by cluster and calculate mean
-cluster_analysis = cocktail_data_encoded[numeric_columns_for_analysis]
-cluster_means = cluster_analysis.groupby("cluster").mean()
-
-print("Cluster Means:")
-print(cluster_means)
+def reduce_dimensions(data, n_components=2):
+    """Reduce the dimensionality of the dataset for visualization."""
+    pca = PCA(n_components=n_components)
+    return pca.fit_transform(data)
